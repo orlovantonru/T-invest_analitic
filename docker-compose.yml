@@ -1,0 +1,31 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production          # TINVEST_TOKEN, SESSION_SECRET, APP_PASSWORD_HASH
+    expose: ["8787"]                   # internal only — reached via caddy, never published
+    networks: [edge]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+    networks: [edge]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
