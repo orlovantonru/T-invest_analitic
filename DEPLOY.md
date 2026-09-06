@@ -27,7 +27,7 @@ cookie). Всё в Docker Compose: контейнер `web` (Node: статик�
 5. [Шаг 3. Docker и Compose](#шаг-3-docker-и-compose)
 6. [Шаг 4. Код на сервер](#шаг-4-код-на-сервер)
 7. [Шаг 5. Секреты — `.env.production`](#шаг-5-секреты--envproduction)
-8. [Шаг 6. Домен в `Caddyfile`](#шаг-6-домен-в-caddyfile)
+8. [Шаг 6. (домен из `APP_DOMAIN`)](#шаг-6-пропущен--домен-берётся-из-app_domain)
 9. [Шаг 7. Сборка и запуск](#шаг-7-сборка-и-запуск)
 10. [Шаг 8. Проверка](#шаг-8-проверка)
 11. [Обновление](#обновление)
@@ -202,31 +202,17 @@ docker run --rm hello-world
 
 ## Шаг 4. Код на сервер
 
-### Вариант А — git (если репозиторий доступен с сервера)
+Репозиторий публичный — просто клонируем:
 
 ```bash
 cd ~
-git clone <URL_репозитория> mobinvest
+git clone https://github.com/orlovantonru/T-invest_analitic.git mobinvest/app
 cd mobinvest/app
+ls Dockerfile docker-compose.yml Caddyfile .env.production.example server/ scripts/hash-password.mjs
 ```
 
-### Вариант Б — залить с локальной машины
-
-С **локальной** машины (из каталога `mobInvest`):
-
-```bash
-rsync -av --exclude node_modules --exclude dist --exclude '.env*' \
-  ./ deploy@<IP_VPS>:~/mobinvest/
-```
-
-Дальше на сервере: `cd ~/mobinvest/app`.
-
-Проверить, что нужные файлы на месте:
-
-```bash
-ls Dockerfile docker-compose.yml Caddyfile .env.production.example \
-   server/ scripts/hash-password.mjs
-```
+(Каталог `mobinvest/app` — чтобы совпадало с локальной структурой; сам git-репозиторий
+живёт в `app/`.)
 
 ---
 
@@ -249,10 +235,6 @@ openssl rand -hex 32
 **APP_PASSWORD_HASH** (scrypt-хеш пароля для входа, пользователь `admin`):
 
 ```bash
-# если на сервере есть Node >= 20:
-node scripts/hash-password.mjs 'ПРИДУМАЙТЕ_ПАРОЛЬ' 2>/dev/null
-
-# если Node нет — через Docker:
 docker run --rm -v "$PWD":/a -w /a node:22-slim \
   node scripts/hash-password.mjs 'ПРИДУМАЙТЕ_ПАРОЛЬ' 2>/dev/null
 ```
@@ -264,6 +246,7 @@ nano .env.production
 ```
 
 ```ini
+APP_DOMAIN=portfolio.ВАШ-ДОМЕН.com
 TINVEST_TOKEN=t.НОВЫЙ_ТОКЕН_ИЗ_ШАГА_0
 SESSION_SECRET=вывод_openssl_rand
 APP_PASSWORD_HASH=salt:hash_из_hash-password.mjs
@@ -272,50 +255,28 @@ PROXY_HOST=0.0.0.0
 NODE_ENV=production
 ```
 
+- `APP_DOMAIN` — домен из Шага 1 (его DNS A-запись указывает на VPS). Caddy читает
+  его из окружения (`{$APP_DOMAIN}` в `Caddyfile`), поэтому **править `Caddyfile`
+  не нужно**.
 - **Несколько пользователей** вместо одного пароля: закомментируйте
-  `APP_PASSWORD_HASH`, добавьте (хеши — тем же скриптом):
-  ```ini
-  APP_USERS={"alice":"salt:hash","bob":"salt:hash"}
-  ```
+  `APP_PASSWORD_HASH`, добавьте `APP_USERS={"alice":"salt:hash","bob":"salt:hash"}`.
 - В `.env.production` **нет** кавычек вокруг значений и переносов внутри них.
-- Файл уже в `.gitignore`. Никогда не коммитьте и не пересылайте его.
+- Файл в `.gitignore`. Никогда не коммитьте и не пересылайте его.
 
 ---
 
-## Шаг 6. Домен в `Caddyfile`
+## Шаг 6. (пропущен — домен берётся из `APP_DOMAIN`)
 
-```bash
-sed -i 's/portfolio\.example\.com/portfolio.ВАШ-ДОМЕН.com/' Caddyfile
-cat Caddyfile
-```
-
-Должно получиться:
-
-```caddy
-portfolio.ВАШ-ДОМЕН.com {
-	encode zstd gzip
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options nosniff
-		X-Frame-Options DENY
-		Referrer-Policy no-referrer
-	}
-	reverse_proxy web:8787
-}
-```
-
-Для **staging-сертификата** (пока тестируете, чтобы не упереться в лимиты Let's
-Encrypt — 5 неудач/час, 50 сертификатов/неделю на домен) добавьте первой строкой в
-`Caddyfile`:
+`Caddyfile` не трогаем. Если нужен **staging-сертификат** Let's Encrypt на время
+тестов (лимит — 5 неудач/час, 50 серт./неделю на домен), добавьте первой строкой:
 
 ```caddy
 {
 	acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 }
 ```
-
-После успешного теста — удалите этот блок и `docker compose up -d` заново (Caddy
-перевыпустит боевой сертификат).
+После успеха уберите и `docker compose up -d` заново. (Или коммитить это не надо —
+правьте локальную копию `Caddyfile` на сервере, потом `git checkout Caddyfile`.)
 
 ---
 
@@ -393,15 +354,18 @@ rm /tmp/cj
 
 ## Обновление
 
+Локально закоммитили и запушили в GitHub — на сервере:
+
 ```bash
 cd ~/mobinvest/app
-git pull                        # или заново rsync с локальной машины
+git pull
 docker compose up -d --build    # пересобирает web; caddy не трогается
 docker image prune -f           # убрать старые слои
 ```
 
 `web` пересоберётся и перезапустится (даунтайм ~1–2 с). Сессии переживают
 перезапуск (cookie stateless). Сертификаты Caddy — в volume, не теряются.
+`.env.production` не в git — `git pull` его не трогает.
 
 Проверить после обновления: `curl -s https://ВАШ-ДОМЕН/healthz`.
 
@@ -633,7 +597,7 @@ healthchecks.io) с оповещением при недоступности.
 - [ ] Docker + Compose v2, `deploy` в группе `docker`, перелогин выполнен
 - [ ] Код на сервере, все файлы на месте
 - [ ] `.env.production`: `TINVEST_TOKEN`, `SESSION_SECRET`, `APP_PASSWORD_HASH`; `chmod 600`
-- [ ] Домен вписан в `Caddyfile`
+- [ ] `APP_DOMAIN` в `.env.production` = ваш домен
 - [ ] `docker compose up -d --build` — оба контейнера `running`, `web` `healthy`
 - [ ] В логах caddy — `certificate obtained successfully`
 - [ ] `/healthz` = 200, `/api/accounts` без cookie = 401, HTTP→HTTPS = 308

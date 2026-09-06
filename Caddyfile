@@ -1,5 +1,5 @@
-# Replace portfolio.example.com with your domain (also: DNS A-record -> VPS IP).
-portfolio.example.com {
+# Domain comes from APP_DOMAIN (docker-compose passes it in from app/.env).
+{$APP_DOMAIN} {
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
