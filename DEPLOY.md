@@ -110,6 +110,17 @@ apt install -y ca-certificates curl git ufw fail2ban unattended-upgrades
 dpkg-reconfigure -f noninteractive unattended-upgrades   # авто-обновления безопасности
 ```
 
+Заметки по выводу:
+- Строки `SyntaxWarning: invalid escape sequence` из `fail2ban/tests/...` —
+  безвредные предупреждения Python 3.12, игнорировать.
+- `needrestart` может показать `Pending kernel upgrade!` и список отложенных
+  перезапусков сервисов — значит `apt upgrade` поставил новое ядро. Сейчас
+  удобнее всего перезагрузиться:
+  ```bash
+  reboot
+  ```
+  Переподключиться и проверить: `uname -r` (новая версия), `systemctl is-active fail2ban`.
+
 ### 2.2 Пользователь `deploy`
 
 ```bash

@@ -27,12 +27,6 @@ export function App() {
   return (
     <div className="stage">
       <div className="device">
-        <div className="device-notch" />
-        <div className="statusbar">
-          <span>9:41</span>
-          <span>▪▪▪ 🔋</span>
-        </div>
-
         <div className="screen">
           {status === "loading" ? (
             <div className="screen-center">
@@ -61,8 +55,6 @@ export function App() {
             </>
           )}
         </div>
-
-        <div className="home-indicator" />
       </div>
     </div>
   );

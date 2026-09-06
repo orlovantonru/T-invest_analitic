@@ -1,8 +1,12 @@
 node_modules
 dist
 *.local
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
 !.env.production.example
+*.tgz
+*.tar.gz
 .DS_Store
+Thumbs.db
