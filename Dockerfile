@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# Двухстадийная сборка: 1) node:22-slim собирает SPA (tsc + vite → /app/dist),
+# 2) рантайм-образ = Node + dist/ + server/. Рантайм-зависимостей нет (React/Vite
+# только для сборки), поэтому node_modules в финальный образ не тащим.
 
 # ---- build the SPA ----
 FROM node:22-slim AS build

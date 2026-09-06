@@ -1,3 +1,12 @@
+/**
+ * Корневой компонент. Рамка «телефона» → по `status`:
+ *   loading → спиннер
+ *   auth    → <LoginScreen>
+ *   demo    → баннер «демо-данные» + обычный интерфейс
+ *   live    → обычный интерфейс
+ * Интерфейс = фиксированная <Header> + скроллируемая активная вкладка + <BottomNav>,
+ * поверх — боттом-шиты и полноэкранная карточка бумаги (по флагам из store).
+ */
 import { BottomNav } from "./components/BottomNav";
 import { DetailOverlay } from "./components/DetailOverlay";
 import { Header } from "./components/Header";

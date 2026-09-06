@@ -1,3 +1,7 @@
+// Вкладка «Динамика доходности»: чипы периода, график портфель / бенчмарк /
+// инфляция (три polyline), итоговые проценты, таблица доходности по бумагам.
+// live → getPerformanceLive (заказывает свечи всех бумаг + бенчмарк, помечает
+// кривую как приблизительную); demo → getPerformanceDemo (+ произвольный диапазон).
 import { useEffect } from "react";
 import { PERIODS } from "../../data/demo";
 import { usePortfolioData } from "../../data/PortfolioDataProvider";

@@ -1,3 +1,4 @@
+// Нижняя навигация на 5 вкладок. Активная — полная непрозрачность + точка-индикатор.
 import { useStore, type Tab } from "../store";
 import {
   NavAllocation,

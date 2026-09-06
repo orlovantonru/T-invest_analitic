@@ -1,5 +1,6 @@
-// Generate an APP_PASSWORD_HASH value.
-//   node scripts/hash-password.mjs 'my-password'
+// Печатает значение для APP_PASSWORD_HASH из пароля.
+//   node scripts/hash-password.mjs 'мой-пароль' 2>/dev/null
+// (2>/dev/null глушит предупреждения auth.js о ненастроенном окружении)
 import { hashPassword } from "../server/auth.js";
 
 const pw = process.argv[2];

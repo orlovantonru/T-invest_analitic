@@ -1,3 +1,5 @@
+// Экран входа. Показывается, когда прокси включил аутентификацию и сессии нет.
+// POST /auth/login → при успехе provider.retryAuth() перезапускает загрузку.
 import { useState } from "react";
 import { api, ProxyError } from "../api/client";
 import { usePortfolioData } from "../data/PortfolioDataProvider";

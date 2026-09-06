@@ -1,4 +1,6 @@
-// Runs the proxy and Vite together. `npm run dev`.
+// `npm run dev` — запускает прокси и Vite вместе.
+// Если есть app/.env → поднимает и прокси (с `--watch`), иначе только Vite (демо-режим).
+// Падение любого из процессов гасит второй.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";

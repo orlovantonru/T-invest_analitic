@@ -1,3 +1,6 @@
+# Прод-стек: web (Node: статика + /api + /auth) за caddy (TLS Let's Encrypt +
+# reverse-proxy). Наружу опубликован только caddy (80/443); web слушает во
+# внутренней сети. Обе службы читают .env.production (web — секреты, caddy — APP_DOMAIN).
 services:
   web:
     build: .

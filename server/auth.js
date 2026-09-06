@@ -1,12 +1,19 @@
-// Password + stateless-session auth for the proxy.
-//
-// - Password(s) come from the environment as scrypt hashes (see
-//   scripts/hash-password.mjs). Single shared password -> APP_PASSWORD_HASH
-//   (user "admin"); or APP_USERS='{"alice":"<hash>","bob":"<hash>"}'.
-// - The session is a signed cookie (no server-side store), so container
-//   restarts don't log anyone out.
-// - If no password is configured, auth is OFF (local dev convenience). Docker
-//   Compose always sets APP_PASSWORD_HASH, so production is always protected.
+/**
+ * Аутентификация прокси: пароль + stateless-сессия.
+ *
+ *  - Пароль(и) — из окружения, в виде scrypt-хешей (`scripts/hash-password.mjs`).
+ *    Один общий пароль → `APP_PASSWORD_HASH` (пользователь «admin»);
+ *    несколько → `APP_USERS='{"alice":"<hash>","bob":"<hash>"}'`.
+ *  - Сессия — подписанная на `SESSION_SECRET` cookie `sid` (без хранилища на
+ *    сервере), поэтому рестарт контейнера никого не разлогинивает.
+ *  - Пароль не задан → аутентификация ВЫКЛ (удобно для локальной разработки).
+ *    Docker Compose всегда передаёт `APP_PASSWORD_HASH`, так что прод защищён.
+ *  - Антибрутфорс: 10 неудач с одного IP → блок на 15 минут (429).
+ *
+ * Экспортирует: `verifyPassword`, `mintCookie`/`clearCookie`, `readSession`
+ * (→ `{ user }` или null), `loginAllowed`/`noteLoginFail`/`noteLoginOk`,
+ * `hashPassword` (для скрипта), флаг `AUTH_ENABLED`.
+ */
 
 import crypto from "node:crypto";
 

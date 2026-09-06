@@ -1,3 +1,4 @@
+// Инлайновые SVG-иконки в стиле Lucide (outline). Без внешних файлов и зависимостей.
 interface IconProps {
   size?: number;
   className?: string;

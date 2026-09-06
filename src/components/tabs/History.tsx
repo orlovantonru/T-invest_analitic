@@ -1,3 +1,5 @@
+// Вкладка «История операций»: чипы фильтра по типу, список сделок и выплат.
+// В live операции грузятся лениво (`ensureOperations`) — до этого скелетоны.
 import { useEffect } from "react";
 import { HISTORY_FILTERS } from "../../data/demo";
 import { usePortfolioData } from "../../data/PortfolioDataProvider";

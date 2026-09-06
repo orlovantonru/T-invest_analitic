@@ -1,11 +1,20 @@
-// Proxy for the T-Invest API + static host for the built SPA.
-//
-//   node --env-file=.env server/index.js         (local dev: `npm run dev` runs this + Vite)
-//   node server/index.js                         (container: env comes from Compose)
-//
-// The API token stays in this process and never reaches the client. On a public
-// deployment every /api/* route requires a session cookie (see server/auth.js);
-// the static SPA and /healthz stay open.
+/**
+ * Прокси к T-Invest API + раздача собранного SPA.
+ *
+ *   node --env-file=.env server/index.js   — локально (`npm run dev` поднимает это + Vite)
+ *   node server/index.js                   — в контейнере (env приходит из Compose)
+ *
+ * Токен T-Invest живёт только в этом процессе и в браузер не попадает. Каждый
+ * ответ API нормализуется в модель приложения (типы — в src/data/demo.ts), чтобы
+ * фронтенд не зависел от формата T-Invest.
+ *
+ * Маршруты:
+ *   GET  /healthz          — открыт, для healthcheck
+ *   POST /auth/login,      — вход/выход, статус сессии (server/auth.js)
+ *   GET  /auth/me, /logout
+ *   GET  /api/*            — данные портфеля; ЗА сессионной cookie, если задан пароль
+ *   GET  *                 — статика dist/ + SPA-fallback на index.html
+ */
 
 import http from "node:http";
 import { createReadStream } from "node:fs";
@@ -91,7 +100,7 @@ const exchangeLabel = (e) => {
   return e.toUpperCase();
 };
 
-// ── instrument class mapping ──────────────────────────────────────────────────
+// Вид инструмента + страна риска → класс актива (совпадает с чипами фильтра «Состава»).
 function classOf(kind, countryOfRisk) {
   switch (kind) {
     case "share":
@@ -108,6 +117,10 @@ function classOf(kind, countryOfRisk) {
 }
 
 // ── /api/portfolio ───────────────────────────────────────────────────────────
+/** GET /api/portfolio — позиции + тоталы, нормализованные в модель приложения.
+ *  Портфель запрашивается в рублях; валютные бумаги пересчитываются по курсу
+ *  (`getFxRate`). НКД облигаций включается в цену. `sector`/`spark` заполняются
+ *  на фронте лениво, поэтому здесь — заглушки. */
 async function buildPortfolio(accountId) {
   const [{ accounts = [] }, portfolio] = await Promise.all([
     call("UsersService/GetAccounts", {}),
@@ -117,10 +130,12 @@ async function buildPortfolio(accountId) {
 
   const positions = portfolio.positions || [];
 
+  // метаданные инструмента (имя, страна, ISIN, площадка) — по одному запросу на UID, кэш в tinvest.js
   const instruments = await Promise.all(
     positions.map((p) => (p.instrumentUid ? getInstrument(p.instrumentUid).catch(() => null) : null)),
   );
 
+  // курсы для всех не-рублёвых валют, встретившихся в позициях
   const fxNeeded = new Set();
   positions.forEach((p) => {
     const c = (p.currentPrice?.currency || "rub").toUpperCase();
@@ -136,8 +151,9 @@ async function buildPortfolio(accountId) {
     const priceCur = (p.currentPrice?.currency || "rub").toUpperCase();
     const qty = mv(p.quantity);
     const price = isCash ? 1 : mv(p.currentPrice);
-    const nkd = mv(p.currentNkd);
+    const nkd = mv(p.currentNkd); // накопленный купонный доход (для облигаций)
     const avgPrice = isCash ? 1 : mv(p.averagePositionPrice);
+    // % за день считаем из абсолютного dailyYield: pct = daily / (стоимость − daily)
     const valueInstr = qty * (price + nkd);
     const daily = mv(p.dailyYield);
     const dayChangePct =
@@ -177,7 +193,9 @@ async function buildPortfolio(accountId) {
   };
 }
 
-// ── /api/operations ──────────────────────────────────────────────────────────
+/** GET /api/operations — история за `days` дней. Пагинация по курсору;
+ *  оставляем только 4 типа (покупка/продажа/дивиденд/купон), комиссии и налоги
+ *  отбрасываем; сортировка от новых к старым. */
 async function buildOperations(accountId, days) {
   const from = iso(days * DAY);
   const to = new Date().toISOString();
@@ -222,14 +240,16 @@ async function buildOperations(accountId, days) {
     .sort((a, b) => new Date(b._ts) - new Date(a._ts));
 }
 
+/** GET /api/candles — дневные свечи инструмента: цены закрытия + их времена. */
 async function buildCandles(uid, days) {
   const data = await getCandles(uid, iso(days * DAY), new Date().toISOString());
   return { uid, closes: data.map((c) => c.close), times: data.map((c) => c.t) };
 }
 
+/** GET /api/benchmark-candles — свечи индекса МосБиржи (UID ищется через Indicatives). */
 async function buildBenchmark(days) {
   const uid = await getImoexUid();
-  if (!uid) return { closes: [], times: [] };
+  if (!uid) return { closes: [], times: [] }; // фронт просто спрячет линию бенчмарка
   const data = await getCandles(uid, iso(days * DAY), new Date().toISOString());
   return { uid, closes: data.map((c) => c.close), times: data.map((c) => c.t) };
 }

@@ -1,3 +1,18 @@
+/**
+ * ── Селекторы: сырые данные → всё, что рисует UI ─────────────────────────────
+ *
+ * Единственное место, где считается производное: стоимость и P&L позиции, доли,
+ * аллокация, топ движения, доходность за период, детали карточки бумаги.
+ *
+ * Функции ЧИСТЫЕ и не знают про источник данных — на вход им дают массивы
+ * (`holdings`, `operations`, свечи), которые собирает `PortfolioDataProvider`
+ * (из API в live-режиме или из `data/demo.ts` в демо). Каждый селектор
+ * возвращает уже готовые к рендеру строки/цвета, чтобы компоненты остались
+ * «тупыми».
+ *
+ * Демо-специфика (`ACCOUNTS`, `HOLDINGS`, `PERF_SEED`) импортируется только
+ * функциями с суффиксом `...Demo`.
+ */
 import {
   ACCOUNTS,
   BOND_INFO,
@@ -30,10 +45,15 @@ import {
 } from "./format";
 import { buildPoints, buildSparkPoints, genSeries, tickDates, tickerSeed } from "./series";
 
+/** Позиция + рассчитанные по ней величины (базовый кирпич для всех вкладок). */
 export interface EnrichedHolding extends Holding {
+  /** Текущая стоимость позиции в валюте счёта. */
   value: number;
+  /** Вложено (qty × средняя цена) в валюте счёта. */
   cost: number;
+  /** Изменение стоимости за день в деньгах. */
   dayAbs: number;
+  /** Нереализованный P&L в деньгах и в процентах. */
   plAbs: number;
   plPct: number;
 }
@@ -41,6 +61,8 @@ export interface EnrichedHolding extends Holding {
 export const getAccount = (accounts: Account[], id: string): Account =>
   accounts.find((a) => a.id === id) ?? accounts[0];
 
+// Стоимость / вложено с конвертацией валютных бумаг в валюту счёта.
+// fx берётся из позиции (реальный курс в live), иначе запасные 92 ₽/$.
 const valueOf = (h: Holding, acc: Account) => {
   const cur = h.currency ?? acc.currency;
   let v = h.qty * h.price;
@@ -54,6 +76,7 @@ const costOf = (h: Holding, acc: Account) => {
   return v;
 };
 
+/** Позиции → позиции с value/cost/dayAbs/plAbs/plPct. Отправная точка почти всех селекторов. */
 export function enrich(list: Holding[], acc: Account): EnrichedHolding[] {
   return list.map((h) => {
     const value = valueOf(h, acc);
@@ -70,6 +93,7 @@ export function enrich(list: Holding[], acc: Account): EnrichedHolding[] {
   });
 }
 
+/** Сумма по портфелю: стоимость, изменение за день, вложено, P&L (деньги + %). Шапка. */
 export function getTotals(enriched: EnrichedHolding[]) {
   const totalValue = enriched.reduce((s, h) => s + h.value, 0);
   const totalDayAbs = enriched.reduce((s, h) => s + h.dayAbs, 0);
@@ -87,7 +111,8 @@ export function getTotals(enriched: EnrichedHolding[]) {
 
 const changeColor = (n: number) => (n >= 0 ? POS : NEG);
 
-// ── Overview ──────────────────────────────────────────────────────────────────
+// ── «Обзор» ─────────────────────────────────────────────────────────────────
+/** Аллокация по классу актива → сегменты для бара + легенды (доля, цвет из PALETTE). */
 export function getClassSegments(enriched: EnrichedHolding[], totalValue: number) {
   const groups: Record<string, number> = {};
   enriched.forEach((h) => (groups[h.cls] = (groups[h.cls] ?? 0) + h.value));
@@ -102,6 +127,8 @@ export function getClassSegments(enriched: EnrichedHolding[], totalValue: number
     }));
 }
 
+/** 4 бумаги с наибольшим |изменением за день| для карточки «Топ движения дня».
+ *  `points` пустой, пока не подгрузились свечи (в live). `uid` — чтобы их заказать. */
 export function getTopMovers(enriched: EnrichedHolding[], acc: Account) {
   return enriched
     .filter((h) => !h.isCash)
@@ -120,8 +147,10 @@ export function getTopMovers(enriched: EnrichedHolding[], acc: Account) {
     }));
 }
 
-const FX_RUB = 92;
+const FX_RUB = 92; // запасной курс, если у операции нет своего
 
+/** Сумма дивидендов+купонов за последний месяц (карточка «Дивиденды и купоны» на «Обзоре»).
+ *  В live фильтрует по `_ts`; в демо (`_ts` нет) берёт всё. */
 export function getDividendMonthTotal(operations: Tx[]) {
   const cutoff = Date.now() - 31 * 86400000;
   return operations
@@ -130,7 +159,8 @@ export function getDividendMonthTotal(operations: Tx[]) {
     .reduce((s, t) => s + (t.currency && t.currency !== "RUB" ? t.sum * FX_RUB : t.sum), 0);
 }
 
-// ── Holdings ──────────────────────────────────────────────────────────────────
+// ── «Состав» ────────────────────────────────────────────────────────────────
+/** Предикаты чипов фильтра (ключи совпадают с `FILTER_OPTIONS` из demo.ts). */
 const FILTERS: Record<string, (h: EnrichedHolding) => boolean> = {
   all: () => true,
   stock_ru: (h) => h.cls === "Акции РФ",
@@ -138,6 +168,7 @@ const FILTERS: Record<string, (h: EnrichedHolding) => boolean> = {
   bond: (h) => h.cls === "Облигации",
   cash: (h) => h.cls === "Денежные средства",
 };
+/** Компараторы сортировки (ключи — из `SORT_OPTIONS`). */
 const SORTS: Record<string, (a: EnrichedHolding, b: EnrichedHolding) => number> = {
   value_desc: (a, b) => b.value - a.value,
   day_desc: (a, b) => b.dayChangePct - a.dayChangePct,
@@ -145,6 +176,7 @@ const SORTS: Record<string, (a: EnrichedHolding, b: EnrichedHolding) => number> 
   name_asc: (a, b) => a.name.localeCompare(b.name, "ru"),
 };
 
+/** Строки списка позиций с учётом текущего фильтра и сортировки. */
 export function getHoldingRows(
   enriched: EnrichedHolding[],
   acc: Account,
@@ -166,7 +198,12 @@ export function getHoldingRows(
     }));
 }
 
-// ── Allocation ────────────────────────────────────────────────────────────────
+// ── «Аллокация» ─────────────────────────────────────────────────────────────
+/**
+ * Группировка по измерению `dim` (класс / сектор / валюта) → сегменты доната
+ * (через `stroke-dasharray`/`dashoffset`) + легенда. `circ` — длина окружности
+ * кольца r=70; `cum` копит смещение для следующего сегмента.
+ */
 export function getAllocation(
   enriched: EnrichedHolding[],
   acc: Account,
@@ -207,7 +244,12 @@ export function getAllocation(
   return { donut, legend };
 }
 
-// ── Performance ───────────────────────────────────────────────────────────────
+// ── «Динамика доходности» ───────────────────────────────────────────────────
+// Два пути: `getPerformanceDemo` (синтетика из PERF_SEED) и `getPerformanceLive`
+// (приблизительно из свечей). Оба возвращают один тип `PerfResult`, поэтому
+// компонент `Performance.tsx` рисует их одинаково.
+
+/** Подмножество UI-состояния, нужное вкладке «Динамика». */
 export interface PerfState {
   perfPeriod: string;
   customFrom: string;
@@ -217,6 +259,7 @@ export interface PerfState {
   showInflation: boolean;
 }
 
+/** Готовые к рендеру данные вкладки: три polyline, оси, итоговые проценты, таблица. */
 export interface PerfResult {
   benchName: string;
   portfolioPoints: string;
@@ -245,6 +288,7 @@ export interface PerfResult {
   approx: boolean;
 }
 
+/** Календарное окно периода для нарезки свечей (live). */
 export const PERIOD_DAYS: Record<string, number> = {
   "1m": 31,
   "3m": 92,
@@ -253,12 +297,13 @@ export const PERIOD_DAYS: Record<string, number> = {
   all: 3650,
 };
 
+/** Свечи одного инструмента: цены закрытия + их ISO-времена (провайдер грузит один раз на ~5 лет). */
 export interface CandleData {
   closes: number[];
   times: string[];
 }
 
-/** Keep only the points within `days` of now. */
+/** Оставить только закрытия за последние `days` дней (≥2 точки, иначе последние две). */
 function windowByDays(d: CandleData | undefined, days: number): number[] {
   if (!d?.closes.length) return [];
   const cutoff = Date.now() - days * 86400000;
@@ -269,6 +314,7 @@ function windowByDays(d: CandleData | undefined, days: number): number[] {
   return out.length >= 2 ? out : d.closes.slice(-2);
 }
 
+/** Текстовый вывод под графиком: «портфель обгоняет … на N п.п. и опережает инфляцию …». */
 function outperform(benchName: string, portReturn: number, benchReturn: number, inflReturn: number | null) {
   const cmp = (a: number, b: number, up: string, down: string) => (a >= b ? up : down);
   let s =
@@ -288,7 +334,11 @@ function outperform(benchName: string, portReturn: number, benchReturn: number, 
   return s;
 }
 
-/** Demo mode: synthetic series from PERF_SEED (unchanged behaviour). */
+/**
+ * ДЕМО: синтетические ряды из `PERF_SEED` (поведение прототипа без изменений).
+ * Поддерживает произвольный диапазон дат (`customActive`), инфляцию, доходность
+ * по каждой бумаге из её собственного seed.
+ */
 export function getPerformanceDemo(accountId: string, s: PerfState, totalValue: number): PerfResult {
   const account = ACCOUNTS.find((a) => a.id === accountId) ?? ACCOUNTS[0];
   const seed = PERF_SEED[account.id];
@@ -371,15 +421,22 @@ export function getPerformanceDemo(accountId: string, s: PerfState, totalValue: 
   };
 }
 
+/** Массив закрытий → доходность к первой точке в %, [0, r1, r2, …]. */
 const pctReturns = (closes: number[]) => {
   if (closes.length < 2 || !closes[0]) return [];
   return closes.map((c) => (c / closes[0] - 1) * 100);
 };
 
 /**
- * Live mode: the API has no portfolio-value-over-time series, so we approximate
- * it — each holding's daily candle returns weighted by its current portfolio
- * weight. Benchmark = IMOEX candles. No inflation line.
+ * LIVE: в API нет готового ряда «стоимость портфеля во времени», поэтому строим
+ * ПРИБЛИЖЁННО:
+ *   P(t) = Σᵢ wᵢ · rᵢ(t),  где wᵢ — текущая доля бумаги, rᵢ — доходность её свечей.
+ * Бенчмарк — свечи индекса МосБиржи. Линии инфляции нет (нет источника).
+ * В UI помечается как приблизительная (`approx: true`).
+ *
+ * Ряды бумаг разной длины (разные торговые календари, даты листинга) —
+ * ресэмплим каждый к фиксированным `N` точкам линейной интерполяцией по индексу.
+ * Крайние точки сохраняются, поэтому итоговая доходность за период — точная.
  */
 export function getPerformanceLive(
   enriched: EnrichedHolding[],
@@ -390,15 +447,13 @@ export function getPerformanceLive(
 ): PerfResult {
   const days = PERIOD_DAYS[s.perfPeriod] ?? 183;
   const win = (uid: string) => windowByDays(candlesByUid[uid], days);
+  // только бумаги, по которым есть ≥2 свечи в окне — остальные в кривую не входят
   const invested = enriched.filter(
     (h) => !h.isCash && h.instrumentUid && win(h.instrumentUid).length >= 2,
   );
   const investedValue = invested.reduce((sum, h) => sum + h.value, 0) || 1;
 
-  // Series have different lengths (trading calendars, listing dates). Resample
-  // each to a fixed point count by index interpolation so they align 1:1 —
-  // endpoints are preserved, so period returns stay exact.
-  const N = 80;
+  const N = 80; // точек в выровненных рядах
   const resample = (a: number[]) => {
     if (a.length <= 1) return a.slice();
     return Array.from({ length: N }, (_, i) => {
@@ -475,7 +530,8 @@ export function getPerformanceLive(
   };
 }
 
-// ── History ───────────────────────────────────────────────────────────────────
+// ── «История операций» ──────────────────────────────────────────────────────
+/** Операции + фильтр по типу → строки списка: знак суммы, цвет, тег, примечание. */
 export function getHistory(operations: Tx[], filter: string, accountCurrency: "RUB" | "USD") {
   return operations
     .filter((t) => filter === "all" || t.type === filter)
@@ -497,12 +553,21 @@ export function getHistory(operations: Tx[], filter: string, accountCurrency: "R
     });
 }
 
-// ── Detail overlay ────────────────────────────────────────────────────────────
+// ── Полноэкранная карточка бумаги ───────────────────────────────────────────
+/** Опциональные ленивые данные карточки (в live подгружаются при её открытии). */
 export interface DetailOpts {
+  /** Свечи бумаги для графика цены. */
   candleCloses?: number[];
+  /** График/история купонов облигации (`GetBondCoupons`). */
   bondCoupons?: BondCoupons;
 }
 
+/**
+ * Всё для карточки одной бумаги: цена, график, средняя, P&L, сектор, для акций —
+ * див. доходность, для облигаций — купоны (плановые + история), «Об эмитенте»,
+ * сделки и выплаты по бумаге. Живые данные предпочитаются демо-таблицам
+ * (`BOND_INFO` / `ISSUER_INFO`), которые остаются фолбэком.
+ */
 export function getDetail(
   holdings: Holding[],
   operations: Tx[],

@@ -1,6 +1,15 @@
-// Fetch wrappers for the local proxy (`app/server`). All calls are relative to
-// `/api`, which Vite proxies to the Node process in dev.
-
+/**
+ * Типизированные обёртки над HTTP-эндпоинтами прокси (`app/server`).
+ *
+ * Всё относительно текущего origin:
+ *  - `/api/*` — данные портфеля (в dev Vite проксирует на :8787, в проде Caddy → web);
+ *  - `/auth/*` — вход/выход/статус сессии.
+ *
+ * Любая сетевая ошибка или не-2xx превращается в `ProxyError` со `status`
+ * (0 = сеть недоступна / нет прокси; 401 = нужен вход; 5xx = ошибка API T-Invest).
+ * `PortfolioDataProvider` смотрит на `status`, чтобы решить: живой режим,
+ * экран входа или демо-фолбэк.
+ */
 import type { Account, Holding, Tx } from "../data/demo";
 
 export interface LivePortfolio {

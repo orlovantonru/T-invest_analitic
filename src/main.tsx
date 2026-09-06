@@ -1,3 +1,9 @@
+/**
+ * Точка входа. Порядок провайдеров важен:
+ *   StoreProvider (UI-состояние)
+ *     └ PortfolioDataProvider (данные + статус live/demo/auth; читает accountId из store)
+ *         └ App
+ */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";

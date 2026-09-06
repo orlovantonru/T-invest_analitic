@@ -1,3 +1,23 @@
+/**
+ * ── Оркестратор данных ──────────────────────────────────────────────────────
+ *
+ * Держит все загруженные данные портфеля и решает, в каком мы РЕЖИМЕ:
+ *   loading → api.me() → 200                    → live  (грузим счета + портфель)
+ *                      → 401                    → auth  (показываем LoginScreen)
+ *                      → сетевая ошибка/нет прокси → demo (данные из data/demo.ts)
+ *
+ * Первая загрузка тянет только необходимое для «Обзора» (счета + портфель).
+ * Остальное — ЛЕНИВО, по требованию вкладок/карточек:
+ *   ensureOperations()  — «История», карточка выплат, сделки в детали
+ *   ensureCandles(uids) — спарклайны, график в карточке, расчёт «Динамики»
+ *   ensureBenchmark()   — линия индекса на «Динамике»
+ *   ensureSectors()     — «Аллокация → Сектор»
+ *   ensureBondCoupons() — график купонов облигации
+ * Каждая ensure*-функция идемпотентна (кэш + набор `inflight` от гонок).
+ *
+ * Компоненты берут данные через `usePortfolioData()`; сырьё передаётся в чистые
+ * селекторы `lib/portfolio.ts`.
+ */
 import {
   createContext,
   useCallback,
@@ -74,7 +94,9 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
   const [sectors, setSectors] = useState<Record<string, string>>({});
   const [bondCoupons, setBondCoupons] = useState<Record<string, BondCoupons>>({});
 
+  // для компонентов: демо ИЛИ live (loading/auth снаружи не видны — App рисует их сам)
   const mode: "live" | "demo" = status === "live" ? "live" : "demo";
+  // ключи выполняющихся запросов — чтобы ensure* не стартовали одно и то же дважды
   const inflight = useRef<Set<string>>(new Set());
 
   const toDemo = useCallback(() => {
@@ -131,7 +153,9 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootKey]);
 
+  /** Перезапустить bootstrap (зовётся после успешного логина из LoginScreen). */
   const retryAuth = useCallback(() => setBootKey((k) => k + 1), []);
+  /** Выйти: гасим cookie на сервере, чистим кэши, показываем экран входа. */
   const logout = useCallback(() => {
     api.logout().finally(() => {
       setPortfolios({});
@@ -173,14 +197,17 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
     };
   }, [status, accountId, portfolios]);
 
-  // ── background: sparklines + operations once the first portfolio is in ──────
+  // портфель активного счёта в live-режиме (иначе undefined → компоненты берут демо)
   const live = status === "live" ? portfolios[accountId] : undefined;
 
+  // ── Ленивые загрузчики ──────────────────────────────────────────────────────
+  // refs, чтобы колбэки видели свежее состояние без пересоздания и лишних ререндеров.
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
   const opsRef = useRef(operationsByAccount);
   opsRef.current = operationsByAccount;
 
+  /** Заказать дневные свечи для инструментов (по одному запросу; ~5 лет, режется по периоду в селекторе). */
   const ensureCandles = useCallback((uids: (string | null | undefined)[]) => {
     for (const uid of new Set(uids.filter((u): u is string => !!u))) {
       const key = `candle:${uid}`;
@@ -194,6 +221,7 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /** Заказать историю операций активного счёта за 200 дней. */
   const ensureOperations = useCallback(() => {
     if (status !== "live") return;
     const key = `ops:${accountId}`;
@@ -206,6 +234,7 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
       .finally(() => inflight.current.delete(key));
   }, [status, accountId]);
 
+  /** Заказать свечи индекса МосБиржи для линии бенчмарка на «Динамике». */
   const ensureBenchmark = useCallback(() => {
     if (status !== "live") return;
     const key = "benchmark";
@@ -218,6 +247,7 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
       .finally(() => inflight.current.delete(key));
   }, [status, benchmark]);
 
+  /** Заказать секторы для всех бумаг активного счёта (для «Аллокация → Сектор»). */
   const ensureSectors = useCallback(() => {
     if (status !== "live" || !live) return;
     const missing = live.holdings.filter(
@@ -234,6 +264,7 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
       .finally(() => inflight.current.delete(key));
   }, [status, live, sectors, accountId]);
 
+  /** Заказать график/историю купонов облигации (при открытии её карточки). */
   const ensureBondCoupons = useCallback(
     (uid: string) => {
       if (status !== "live" || bondCoupons[uid]) return;
@@ -249,6 +280,7 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
     [status, bondCoupons],
   );
 
+  // как только пришёл портфель — фоном подтягиваем операции и спарклайны топ-4 муверов
   useEffect(() => {
     if (status !== "live" || !live) return;
     ensureOperations();
@@ -260,12 +292,13 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
     ensureCandles(movers);
   }, [status, live, ensureOperations, ensureCandles]);
 
-  // ── derived: current account view ──────────────────────────────────────────
+  // ── Производные значения для активного счёта ────────────────────────────────
   const account = useMemo(
     () => accounts.find((a) => a.id === accountId) ?? accounts[0],
     [accounts, accountId],
   );
 
+  // базовые позиции + подмешанные ленивые данные (сектор, спарклайн из свечей)
   const holdings = useMemo<Holding[]>(() => {
     const base = mode === "live" ? (live?.holdings ?? []) : (HOLDINGS[accountId] ?? []);
     return base.map((h) => {
@@ -279,6 +312,7 @@ export function PortfolioDataProvider({ children }: { children: ReactNode }) {
     });
   }, [mode, live, accountId, candles, sectors]);
 
+  // null = ещё грузятся (live); [] = загружены и пусто
   const operations = useMemo<Tx[] | null>(() => {
     if (mode === "demo") return TX[accountId] ?? [];
     return operationsByAccount[accountId] ?? null;

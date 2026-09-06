@@ -1,3 +1,5 @@
+// Мини-график: обёртка над SVG `<polyline>`. `points` уже посчитан
+// (`buildSparkPoints` в lib/series.ts) — компонент только рисует.
 interface SparklineProps {
   points: string;
   color: string;

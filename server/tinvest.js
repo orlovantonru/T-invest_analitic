@@ -1,6 +1,18 @@
-// Thin client for the T-Invest REST gateway. Knows nothing about our app model —
-// it just does authenticated POST calls, parses MoneyValue/Quotation, and keeps
-// an in-process cache for data that rarely changes (instruments, index uid).
+/**
+ * Тонкий клиент REST-шлюза T-Invest. О модели приложения ничего не знает —
+ * только делает авторизованные POST-запросы, парсит MoneyValue/Quotation
+ * (`mv`) и кэширует то, что редко меняется (инструменты, UID индекса, свечи).
+ *
+ * Все методы вызываются как `POST /rest/{CONTRACT}.{Service}/{Method}` с
+ * `Authorization: Bearer <TINVEST_TOKEN>`.
+ *
+ * `node fetch` не умеет добавлять CA, а `*.tbank.ru` подписан «Russian Trusted
+ * Root CA» (Минцифры), которого нет в списке Node → используем `https.request`
+ * со своим agent (дефолтные корни + `russian-trusted-ca.pem`).
+ *
+ * `ALLOWED` — белый список методов (defense in depth): даже read-only токен
+ * дальше него не уходит.
+ */
 
 import https from "node:https";
 import tls from "node:tls";
@@ -72,10 +84,11 @@ export class ApiError extends Error {
 
 const TOKEN = process.env.TINVEST_TOKEN?.trim();
 
-/** MoneyValue / Quotation -> number. */
+/** MoneyValue / Quotation → число. В API суммы приходят как `{units, nano}`,
+ *  где nano — миллиардные доли: 12 ₽ 25 коп = `{units: 12, nano: 250000000}`. */
 export const mv = (x) => (x ? Number(x.units || 0) + (x.nano || 0) / 1e9 : 0);
 
-/** Limit outbound concurrency to stay well under API rate limits. */
+/** Ограничитель параллелизма исходящих запросов — чтобы не упереться в лимиты API. */
 function makePool(limit) {
   let active = 0;
   const queue = [];
@@ -126,15 +139,16 @@ export async function call(methodPath, body = {}) {
   });
 }
 
-// ── small caches ──────────────────────────────────────────────────────────────
-const instrumentCache = new Map(); // uid -> instrument object
-const typedCache = new Map(); // `${kind}:${uid}` -> typed instrument (share/bond/etf)
-const candleCache = new Map(); // key -> { at, data }
-let imoexUidPromise = null;
-const fxUidCache = new Map(); // "USD" -> uid
+// ── Кэши в памяти процесса ───────────────────────────────────────────────────
+const instrumentCache = new Map(); // uid → инструмент (имя/страна/ISIN/…), бессрочно
+const typedCache = new Map(); // `${kind}:${uid}` → share/bond/etf (для сектора и купонов), бессрочно
+const candleCache = new Map(); // ключ → { at, data }, TTL ниже
+let imoexUidPromise = null; // UID индекса МосБиржи, ищется один раз
+const fxUidCache = new Map(); // "USD" → uid валютного инструмента
 
 const CANDLE_TTL_MS = 5 * 60 * 1000;
 
+/** Метаданные инструмента по UID (`GetInstrumentBy`). Кэш бессрочный — не меняются. */
 export async function getInstrument(uid) {
   if (instrumentCache.has(uid)) return instrumentCache.get(uid);
   const { instrument } = await call("InstrumentsService/GetInstrumentBy", {
@@ -145,6 +159,7 @@ export async function getInstrument(uid) {
   return instrument || null;
 }
 
+/** Типизированный инструмент (`ShareBy`/`BondBy`/`EtfBy`) — для сектора и данных облигации. */
 export async function getTypedInstrument(kind, uid) {
   const key = `${kind}:${uid}`;
   if (typedCache.has(key)) return typedCache.get(key);
@@ -164,6 +179,7 @@ export async function getTypedInstrument(kind, uid) {
   }
 }
 
+/** Свечи (`GetCandles`) → `[{ t, close, open }]`. Кэш с TTL 5 мин по (uid, интервал, окно). */
 export async function getCandles(uid, from, to, interval = "CANDLE_INTERVAL_DAY") {
   const key = `${uid}|${interval}|${from}|${to}`;
   const hit = candleCache.get(key);
@@ -182,6 +198,7 @@ export async function getCandles(uid, from, to, interval = "CANDLE_INTERVAL_DAY"
   return data;
 }
 
+/** UID индекса МосБиржи через `Indicatives` (ищем по тикеру IMOEX / имени). Кэш на процесс. */
 export async function getImoexUid() {
   if (!imoexUidPromise) {
     imoexUidPromise = call("InstrumentsService/Indicatives", {})
@@ -196,6 +213,8 @@ export async function getImoexUid() {
   return imoexUidPromise;
 }
 
+/** Курс валюты к рублю: находим биржевой инструмент (`USD000UTSTOM` и т.п.) и
+ *  берём его последнюю цену (`GetLastPrices`). null → конвертация не делается. */
 export async function getFxRate(currency) {
   const cur = currency.toUpperCase();
   if (cur === "RUB") return 1;

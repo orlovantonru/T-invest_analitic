@@ -1,3 +1,5 @@
+// Вкладка «Обзор»: аллокация по классу (бар + легенда), «Топ движения дня»
+// (4 бумаги, спарклайны подгружаются лениво), карточка «Дивиденды и купоны».
 import { usePortfolioData } from "../../data/PortfolioDataProvider";
 import { fmtMoney } from "../../lib/format";
 import {

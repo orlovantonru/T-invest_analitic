@@ -1,3 +1,5 @@
+// Вкладка «Состав портфеля»: чипы фильтра по классу + переключатель сортировки
+// (открывает шит), список позиций. Клик по строке → карточка бумаги.
 import { FILTER_OPTIONS, SORT_OPTIONS } from "../../data/demo";
 import { usePortfolioData } from "../../data/PortfolioDataProvider";
 import { enrich, getHoldingRows } from "../../lib/portfolio";

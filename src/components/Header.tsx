@@ -1,3 +1,6 @@
+// Шапка (фиксирована на всех вкладках): селектор счёта, общая стоимость,
+// изменение за день и общий P&L. Стоимость — из API (`apiTotalValue`), если есть,
+// иначе сумма по позициям.
 import { usePortfolioData } from "../data/PortfolioDataProvider";
 import { enrich, getTotals } from "../lib/portfolio";
 import { fmtMoney, fmtPct, arrow } from "../lib/format";

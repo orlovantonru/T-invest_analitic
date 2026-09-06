@@ -73,6 +73,9 @@ The proxy only ever calls a whitelist of read-only methods (`server/tinvest.js`)
 
 ## Layout
 
+Полное пофайловое описание, диаграмма потока данных и разбор механизмов —
+**[docs/STRUCTURE.md](docs/STRUCTURE.md)**. Краткая версия ниже.
+
 | Path | What |
 |---|---|
 | `server/index.js` | HTTP server: static SPA + SPA-fallback, `/auth/*`, `/healthz`, gated `/api/*` routes, T-Invest response normalisation. |

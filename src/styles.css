@@ -1,4 +1,15 @@
-/* ── Classical design-system tokens (vendored from _ds/classical-.../styles.css) ── */
+/*
+ * Все стили приложения одним файлом (импортируется в main.tsx).
+ * Секции ниже:
+ *   1. Токены дизайн-системы Classical — вендорнуты из _ds/classical-.../styles.css
+ *      (+ локальное переопределение шрифта на системный sans, + цвета роста/падения).
+ *   2. Классы компонентов ДС: .card / .tag / .btn / .seg / .table.
+ *   3. Оболочка приложения: рамка «телефона», шапка, вкладки, нижняя навигация,
+ *      боттом-шиты, экран входа, скелетоны, анимации.
+ * Компоненты используют эти классы + точечные inline-стили.
+ */
+
+/* ── 1. Токены дизайн-системы Classical (вендор из _ds/classical-.../styles.css) ── */
 :root {
   --color-bg: #f3f2f2;
   --color-surface: #eae9e9;
@@ -53,7 +64,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Components ── */
+/* ── 2. Классы компонентов дизайн-системы ── */
 .card {
   border-radius: var(--radius-md);
   background: transparent;
@@ -144,7 +155,7 @@ body {
 }
 .table td { padding: 9px; border-bottom: 1px solid var(--color-divider); }
 
-/* ── App shell ── */
+/* ── 3. Оболочка приложения ── */
 .stage {
   min-height: 100vh;
   display: flex;

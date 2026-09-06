@@ -1,3 +1,5 @@
+// Боттом-шиты: выбор счёта (+ кнопка «Выйти», если включён логин) и выбор
+// сортировки «Состава». Открытие/закрытие — через флаги в store.
 import { SORT_OPTIONS } from "../data/demo";
 import { usePortfolioData } from "../data/PortfolioDataProvider";
 import { fmtMoney } from "../lib/format";

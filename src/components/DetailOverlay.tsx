@@ -1,3 +1,6 @@
+// Полноэкранная карточка бумаги (открывается кликом по строке в любом списке;
+// slide-in справа). При открытии в live-режиме заказывает свечи для графика и,
+// для облигаций, график купонов. Всё содержимое считает `getDetail`.
 import { useEffect } from "react";
 import { usePortfolioData } from "../data/PortfolioDataProvider";
 import { getDetail } from "../lib/portfolio";

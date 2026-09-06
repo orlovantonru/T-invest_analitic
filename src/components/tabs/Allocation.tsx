@@ -1,3 +1,5 @@
+// Вкладка «Аллокация»: сегментированный контрол (Класс / Сектор / Валюта),
+// донат-диаграмма + легенда. При выборе «Сектор» — ленивая догрузка секторов.
 import { useEffect } from "react";
 import { usePortfolioData } from "../../data/PortfolioDataProvider";
 import { fmtMoney } from "../../lib/format";

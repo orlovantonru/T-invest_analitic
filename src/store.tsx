@@ -1,3 +1,12 @@
+/**
+ * Глобальное состояние ИНТЕРФЕЙСА (не данных): активная вкладка, выбранный счёт,
+ * открытые боттом-шиты, фильтры/сортировки, параметры графика доходности.
+ * Форма повторяет прототип `Портфель.dc.html`.
+ *
+ * Данные портфеля живут отдельно — в `PortfolioDataProvider`. Здесь только то,
+ * что пользователь «накликал». Один reducer с действием `set` (мелкий патч);
+ * компоненты вызывают `set({ ... })`.
+ */
 import {
   createContext,
   useContext,
@@ -30,6 +39,7 @@ export interface AppState {
 
 export const initialState: AppState = {
   activeTab: "overview",
+  // демо-id счёта; в live-режиме провайдер подменит на первый реальный
   accountId: "nk-iis",
   accountSheetOpen: false,
   sortSheetOpen: false,
